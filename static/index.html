@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>输入文件夹，输出分析报告</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif; padding: 20px; background: #f8fafc; color: #0f172a; }
+    .row { margin: 12px 0; }
+    input[type=text] { width: 520px; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    button { padding: 10px 16px; cursor: pointer; background: #2563eb; color: #fff; border: none; border-radius: 8px; }
+    button:disabled { background: #93c5fd; cursor: not-allowed; }
+    #status { margin-top: 10px; color: #555; }
+    #results { margin-top: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; background: #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .card img { max-width: 100%; height: auto; display: block; }
+    .list { list-style: none; padding: 0; }
+    .list li { margin: 6px 0; }
+    .title { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+    .progress { width: 100%; height: 10px; background: #e2e8f0; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #34d399, #22c55e); transition: width .3s ease; }
+    .stage { margin-top: 6px; font-size: 12px; color: #475569; }
+    .actions { display: flex; gap: 10px; align-items: center; justify-content: center; }
+    .center { text-align: center; }
+  </style>
+  <script>
+    async function runAnalyze() {
+      const folder = document.getElementById('folder').value.trim();
+      if (!folder) { alert('请输入文件夹路径'); return; }
+      setStatus('正在分析，请稍候...');
+      setRunning(true);
+      try {
+        const resp = await fetch('/analyze', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder })
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(()=>({detail: resp.statusText}));
+          throw new Error(data.detail || '分析失败');
+        }
+        pollProgress();
+      } catch (e) {
+        setStatus('错误：' + e.message);
+        setRunning(false);
+      }
+    }
+
+    let progressTimer = null;
+    async function pollProgress() {
+      clearInterval(progressTimer);
+      progressTimer = setInterval(async () => {
+        try {
+          const res = await fetch('/progress');
+          const p = await res.json();
+          const percent = typeof p.percent === 'number' ? p.percent : 0;
+          setBar(percent);
+          setStage(p.stage || '');
+          if (p.status === 'done') {
+            clearInterval(progressTimer);
+            setStatus('分析完成，正在加载结果...');
+            await loadResults();
+            setStatus('完成');
+            setRunning(false);
+          } else if (p.status === 'error') {
+            clearInterval(progressTimer);
+            setStatus('分析失败：' + (p.error || '未知错误'));
+            setRunning(false);
+          }
+        } catch (e) {
+          clearInterval(progressTimer);
+          setStatus('进度查询失败');
+          setRunning(false);
+        }
+      }, 800);
+    }
+
+    async function loadResults() {
+      const res = await fetch('/results');
+      const data = await res.json();
+      const files = data.files || [];
+      const images = files.filter(f => f.endsWith('.png') || f.endsWith('.svg'));
+      const csvs = files.filter(f => f.endsWith('.csv'));
+      const hasReport = files.includes('security_report.txt');
+
+      // Render images
+      const imgGrid = document.getElementById('images');
+      imgGrid.innerHTML = images.map(name => `
+        <div class="card">
+          <div style="font-weight:600; font-size:14px; margin-bottom:6px;">${name}</div>
+          <img src="/files/${encodeURIComponent(name)}" alt="${name}" />
+          <div style="margin-top:6px;"><a href="/files/${encodeURIComponent(name)}" download>下载</a></div>
+        </div>
+      `).join('');
+
+      // Render csv
+      const csvList = document.getElementById('csvs');
+      csvList.innerHTML = csvs.map(name => `
+        <li><a href="/files/${encodeURIComponent(name)}" download>${name}</a></li>
+      `).join('');
+
+      // Render report link
+      const report = document.getElementById('report');
+      const hasJson = files.includes('security_report.json');
+      const links = [];
+      if (hasReport) links.push(`<a href="/files/security_report.txt" download>下载安全报告 (TXT)</a>`);
+      if (hasJson) links.push(`<a href="/files/security_report.json" download>下载安全报告 (JSON)</a>`);
+      report.innerHTML = links.length ? links.join(' | ') : '暂未生成报告';
+
+      // Overall grade text centered
+      const overall = document.getElementById('overall');
+      if (hasJson) {
+        try {
+          const j = await (await fetch('/files/security_report.json')).json();
+          const grade = j.overall_grade || 'N/A';
+          overall.textContent = `经过分析，传入文件夹的安全等级为：${grade}`;
+        } catch (e) {
+          overall.textContent = '';
+        }
+      } else {
+        overall.textContent = '';
+      }
+    }
+
+    function setStatus(t) { document.getElementById('status').textContent = t; }
+    function setBar(p) { document.querySelector('.bar').style.width = `${p}%`; }
+    function setStage(t) { document.querySelector('.stage').textContent = t; }
+    function setRunning(r) { document.getElementById('runBtn').disabled = r; }
+
+    window.addEventListener('DOMContentLoaded', loadResults);
+  </script>
+</head>
+<body>
+  <div class="title center">输入文件夹，输出分析报告</div>
+  <div class="row">
+    <div class="actions">
+      <input id="folder" type="text" placeholder="例如：C:\\path\\to\\folder" />
+      <button id="runBtn" onclick="runAnalyze()">开始分析</button>
+    </div>
+    <div class="progress"><div class="bar"></div></div>
+    <div class="stage"></div>
+  </div>
+  <div id="status"></div>
+
+  <div id="results">
+    <h3>图片</h3>
+    <div id="images" class="grid"></div>
+
+    <h3>CSV 文件</h3>
+    <ul id="csvs" class="list"></ul>
+
+    <h3 class="center">安全报告</h3>
+    <div id="report" class="row center"></div>
+    <div id="overall" class="row center" style="font-size:18px; font-weight:600;"></div>
+  </div>
+</body>
+</html>
+
+
