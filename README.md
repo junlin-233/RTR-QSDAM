@@ -19,13 +19,13 @@
 | **link.py**         | 将前两者结果融合，计算 “风险防御比（RTR）” 并生成散点分布图。                 |
 | **report.py**       | 综合生成安全性等级报告（JSON/TXT 格式）。                          |
 | **main.py**         | FastAPI Web 服务：统一调度分析任务、跟踪进度、提供结果下载接口。             |
----
+
 ## 技术栈 
 - **后端：** FastAPI，Python 3.9+ 
 - **二进制分析：** pyelftools、capstone 
 - **可视化工具：** matplotlib、numpy 
 - **前端：** 静态HTML/JS + REST API
----
+
 ## 快速入门 
 
 ### 1. 克隆仓库 
