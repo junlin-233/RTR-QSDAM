@@ -29,7 +29,7 @@
 ## 快速入门 
 
 ### 1. 克隆仓库 
-git clone https://github.com/yourname/RTR-QSDAM.git 
+git clone https://github.com/junlin-233/RTR-QSDAM.git
 
 进入RTR-QSDAM目录 
 
